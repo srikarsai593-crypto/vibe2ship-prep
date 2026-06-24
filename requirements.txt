@@ -1,8 +1,9 @@
 streamlit
-google-generativeai
+google-genai
 firebase-admin
 google-auth-oauthlib
 google-api-python-client
 plotly
 pandas
 python-dotenv
+pytz
