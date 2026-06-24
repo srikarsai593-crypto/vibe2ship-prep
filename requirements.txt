@@ -1,4 +1,8 @@
 streamlit
-google-genai
-requests
+google-generativeai
+firebase-admin
+google-auth-oauthlib
+google-api-python-client
+plotly
+pandas
 python-dotenv
