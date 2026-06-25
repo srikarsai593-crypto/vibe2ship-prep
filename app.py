@@ -112,17 +112,41 @@ current_time_ist = datetime.datetime.now(IST)
 # =========================================================
 if not firebase_admin._apps:
     try:
-        cred = credentials.Certificate("service_account.json")
+        # Try Streamlit secrets first (Streamlit Cloud deployment)
+        try:
+            fb = st.secrets["firebase"]
+            cred_dict = {
+                "type": fb["type"],
+                "project_id": fb["project_id"],
+                "private_key_id": fb["private_key_id"],
+                "private_key": fb["private_key"].replace("\\n", "\n"),
+                "client_email": fb["client_email"],
+                "client_id": fb["client_id"],
+                "auth_uri": fb["auth_uri"],
+                "token_uri": fb["token_uri"],
+                "auth_provider_x509_cert_url": fb["auth_provider_x509_cert_url"],
+                "client_x509_cert_url": fb["client_x509_cert_url"],
+                "universe_domain": fb.get("universe_domain", "googleapis.com"),
+            }
+            cred = credentials.Certificate(cred_dict)
+        except (KeyError, FileNotFoundError):
+            # Fall back to local file for development
+            cred = credentials.Certificate("service_account.json")
         firebase_admin.initialize_app(cred)
     except Exception as e:
         st.error(f"❌ Critical Firebase Initialization Error: {e}")
 
-db = firestore.client()
+# Guard db creation — only proceed if Firebase initialized successfully
+try:
+    db = firestore.client()
+except Exception as e:
+    st.error(f"❌ Firestore client error: {e}")
+    st.stop()
 
 # Fetch Gemini API Key
 load_dotenv()
 try:
-    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "") or st.secrets.get("GEMINI_API_KEY", "")
+    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
 except Exception:
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
@@ -804,7 +828,7 @@ else:
         st.error(
             f"⚠️ **Firestore Read Failed** — tasks could not be loaded from the database.\n\n"
             f"`{firestore_error}`\n\n"
-            "Check your `service_account.json` credentials and Firestore security rules."
+            "Check your Streamlit secrets `[firebase]` block and Firestore security rules."
         )
 
     # 🌞 Morning Briefing Agent
