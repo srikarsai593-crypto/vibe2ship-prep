@@ -386,10 +386,12 @@ Start with exactly: Hi {first},"""
 def crisis_agent(task_name: str, hours_left: float) -> list[dict]:
     """Create a ruthless emergency plan for tasks inside the six-hour danger zone."""
     if client is not None:
-        prompt = f"""CRISIS: {hours_left:.1f} hours until deadline for: {task_name}
-Create a ruthless execution plan. Return JSON only:
-[{{"time_block": "0-30min", "action": "...", "output": "..."}}]
-Be brutal. Cut everything non-essential. Only what must exist to pass."""
+        prompt = (
+            f"CRISIS: {hours_left:.1f} hours until deadline for: {task_name}\n"
+            "Create a ruthless execution plan. Return JSON only:\n"
+            "[{\"time_block\": \"0-30min\", \"action\": \"...\", \"output\": \"...\"}]\n"
+            "Be brutal. Cut everything non-essential. Only what must exist to pass."
+        )
         try:
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
@@ -399,7 +401,16 @@ Be brutal. Cut everything non-essential. Only what must exist to pass."""
                     response_mime_type="application/json",
                 ),
             )
-            parsed = json.loads(response.text or "[]")
+            raw_text = response.text or ""
+            try:
+                parsed = json.loads(raw_text)
+            except json.JSONDecodeError:
+                # Try to strip common markdown fences and retry
+                cleaned = raw_text.replace('```json', '').replace('```', '').strip()
+                try:
+                    parsed = json.loads(cleaned)
+                except json.JSONDecodeError:
+                    parsed = []
             if isinstance(parsed, list) and parsed:
                 return parsed
         except Exception as e:
@@ -456,7 +467,7 @@ def breakdown_agent(user_panic_text: str) -> str:
                 response_mime_type="application/json"
             )
         )
-        return response.text
+        return (response.text or '{"tasks": []}')
     except Exception as e:
         print(f"Breakdown agent warning handler triggered: {e}")
         return '{"tasks": []}'
@@ -489,7 +500,7 @@ def priority_orchestrator(raw_tasks_json: str) -> str:
                 response_mime_type="application/json"
             )
         )
-        return response.text
+        return (response.text or raw_tasks_json)
     except Exception as e:
         print(f"Priority orchestrator warning handler triggered: {e}")
         return raw_tasks_json
