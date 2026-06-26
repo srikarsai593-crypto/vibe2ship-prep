@@ -3,8 +3,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 # The exact permission permissions Aria needs
 SCOPES = [
-    'https://www.googleapis.com/auth/calendar.readonly',
-    'https://www.googleapis.com/auth/gmail.readonly'
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/documents',
+    'https://www.googleapis.com/auth/drive.file'
 ]
 
 print("🔄 Initializing absolute force handshake...")
@@ -15,7 +18,7 @@ if not os.path.exists('client_secret.json'):
 
 try:
     flow = InstalledAppFlow.from_client_secrets_file('client_secret.json', SCOPES)
-    print("🚀 Opening your browser window now... Log in using srikarsai593@gmail.com")
+    print("🚀 Opening your browser window now...")
     creds = flow.run_local_server(port=0)
     
     # Write the token to disk

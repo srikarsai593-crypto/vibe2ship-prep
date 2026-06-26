@@ -51,8 +51,10 @@ try:
     else:
         print("✨ SUCCESS! Your agent can see these events:")
         for event in events:
-            start = event['start'].get('dateTime', event['start'].get('date'))
-            print(f"  - {event['summary']} ({start})")
+            event_start = event.get('start', {}) if isinstance(event, dict) else {}
+            start = event_start.get('dateTime', event_start.get('date', 'Unknown start'))
+            summary = event.get('summary', 'Untitled Event') if isinstance(event, dict) else 'Untitled Event'
+            print(f"  - {summary} ({start})")
             
 except Exception as e:
     print(f"❌ Read failed: {str(e)}")
