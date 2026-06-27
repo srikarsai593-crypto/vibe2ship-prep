@@ -384,8 +384,10 @@ def format_live_countdown(deadline_dt):
 
 def render_crisis_plan(crisis_plan):
     """Render crisis plan content in clean markdown format."""
+    if not crisis_plan:
+        return ""
     if isinstance(crisis_plan, str):
-        return crisis_plan
+        return crisis_plan if crisis_plan.strip() != "[]" else ""
     if isinstance(crisis_plan, list):
         formatted = []
         for entry in crisis_plan:
@@ -403,7 +405,7 @@ def render_crisis_plan(crisis_plan):
                 piece.append(output)
             if piece:
                 formatted.append(" — ".join(piece))
-        return "\n\n".join(formatted) if formatted else json.dumps(crisis_plan)
+        return "\n\n".join(formatted) if formatted else ""
     return str(crisis_plan)
 
 
@@ -493,6 +495,7 @@ def enrich_horizon_suggestions_with_gmail(suggestions, gmail_deadlines):
         })
     return enriched
 
+@st.fragment(run_every="1s")
 def crisis_countdown_fragment(deadline_iso, task_label, placeholder=None):
     """Live crisis header — render a countdown block without internal timed reruns."""
     container = placeholder if placeholder is not None else st
@@ -1155,11 +1158,23 @@ with st.sidebar:
 
     # 🛡️ System Controls
     st.title("🛡️ System Control")
-    voice_panic = False
+
+    if "voice_panic_override" not in st.session_state:
+        st.session_state.voice_panic_override = False
+
     audio_bytes = st.audio_input("🎙️ Emergency Voice Command")
-    if audio_bytes is not None:
+
+    if audio_bytes is not None and not st.session_state.voice_panic_override:
         voice_panic = True
         st.toast("Voice parsed: Critical stress detected. Activating Crisis Mode.", icon="🚨")
+        if st.button("🛑 Stand Down (Clear Voice Panic)", use_container_width=True):
+            st.session_state.voice_panic_override = True
+            st.rerun()
+    else:
+        voice_panic = False
+        if audio_bytes is None:
+            st.session_state.voice_panic_override = False # Reset when audio is cleared
+
     manual_crisis = st.checkbox("💥 Force Crisis Mode (Under 6h)", value=False) or voice_panic
     whatsapp_sync = st.toggle(
         "📱 WhatsApp Ambient Sync",
@@ -1557,12 +1572,38 @@ else:
                 key="syllabus_upload"
             )
             if st.button("🪄 Auto-Extract via Gemini Vision", type="secondary"):
-                with st.spinner("Gemini parsing document structure..."):
-                    time.sleep(1.5)
-                    st.session_state.mock_lbl = "Final Project Blueprint"
-                    st.session_state.mock_desc = "Auto-extracted parameters from syllabus."
-                    st.session_state.mock_hrs = 12
-                st.success("Document ingested and parameters estimated.")
+                uploaded_file = st.session_state.get("syllabus_upload")
+                if not uploaded_file:
+                    st.warning("Please upload a syllabus file first.")
+                elif not gemini_client:
+                    st.warning("Gemini API offline. Cannot parse document.")
+                else:
+                    with st.spinner("Gemini Vision analyzing document..."):
+                        try:
+                            # Convert uploaded file to Gemini Part
+                            doc_part = types.Part.from_bytes(
+                                data=uploaded_file.getvalue(),
+                                mime_type=uploaded_file.type
+                            )
+                            prompt = "Analyze this assignment document. Extract and return ONLY a raw JSON object with exactly three keys: 'label' (a short 3-5 word title), 'description' (a 1 sentence summary), and 'effort_hours' (your best integer estimate of hours needed). Do not use markdown formatting or code blocks."
+
+                            resp = gemini_client.models.generate_content(
+                                model="gemini-2.5-flash",
+                                contents=[prompt, doc_part]
+                            )
+
+                            raw_json = resp.text.strip().replace('```json', '').replace('```', '').strip()
+                            extracted = json.loads(raw_json)
+
+                            st.session_state.mock_lbl = extracted.get("label", "Extracted Assignment")
+                            st.session_state.mock_desc = extracted.get("description", "Extracted context.")
+                            st.session_state.mock_hrs = int(extracted.get("effort_hours", 5))
+
+                            log_agent_action("Reflection Agent", "Parsed syllabus via Gemini Vision.")
+                            st.success("Document ingested and parameters extracted!")
+                        except Exception as e:
+                            st.error("Failed to parse document. Please enter manually.")
+                            print(f"Vision Error: {e}")
             with st.form("injector", clear_on_submit=True):
                 t_lbl = st.text_input("Task Label:", value=st.session_state.get("mock_lbl", ""))
                 t_desc = st.text_area("Context:", value=st.session_state.get("mock_desc", ""))
