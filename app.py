@@ -2,7 +2,6 @@ import os
 import io
 import json
 import copy
-import time
 import uuid
 import datetime
 import pytz
@@ -172,22 +171,15 @@ current_time_ist = datetime.datetime.now(IST)
 if not firebase_admin._apps:
     try:
         cred = None
-        
+
         # 1. Try Streamlit Secrets (Streamlit Cloud or mounted .streamlit/secrets.toml)
         if "firebase" in st.secrets:
             try:
                 fb = st.secrets.get("firebase", {})
                 required_keys = [
-                    "type",
-                    "project_id",
-                    "private_key_id",
-                    "private_key",
-                    "client_email",
-                    "client_id",
-                    "auth_uri",
-                    "token_uri",
-                    "auth_provider_x509_cert_url",
-                    "client_x509_cert_url",
+                    "type", "project_id", "private_key_id", "private_key",
+                    "client_email", "client_id", "auth_uri", "token_uri",
+                    "auth_provider_x509_cert_url", "client_x509_cert_url",
                 ]
                 if not all(fb.get(key) for key in required_keys):
                     raise ValueError("Incomplete firebase secrets payload")
@@ -222,7 +214,7 @@ if not firebase_admin._apps:
             cred = credentials.Certificate("service_account.json")
 
         firebase_admin.initialize_app(cred)
-        
+
     except Exception as e:
         print(f"Firebase initialization error: {e}")
         st.warning(
@@ -341,21 +333,20 @@ def log_agent_action(agent, action):
     # Persist agent log to Firestore so it survives reloads
     try:
         if db is not None and st.session_state.get("user_id"):
-            db.collection("user_meta").document(st.session_state.user_id).set({"agent_log": st.session_state.agent_log}, merge=True)
+            db.collection("user_meta").document(st.session_state.user_id).set(
+                {"agent_log": st.session_state.agent_log}, merge=True
+            )
     except Exception:
-        # Non-fatal: keep UI working even if Firestore write fails
-        pass
-
+        pass  # Non-fatal: keep UI working even if Firestore write fails
 
 def generate_default_agent_log():
     morning_base = current_time_ist.replace(hour=9, minute=0, second=0, microsecond=0)
     return [
-        {"agent": "Horizon Agent", "action": "Detected 'Final Exam' on calendar with no prep tasks — auto-generated study plan", "time": (morning_base).strftime("%I:%M %p")},
+        {"agent": "Horizon Agent", "action": "Detected 'Final Exam' on calendar with no prep tasks — auto-generated study plan", "time": morning_base.strftime("%I:%M %p")},
         {"agent": "Breakdown Agent", "action": "Deconstructed 'ML Presentation' into 7 subtasks · Risk: HIGH", "time": (morning_base + datetime.timedelta(hours=1)).strftime("%I:%M %p")},
         {"agent": "Priority Orchestrator", "action": "Re-ranked 3 tasks — 'ML Presentation' moved to slot #1", "time": (morning_base + datetime.timedelta(hours=2)).strftime("%I:%M %p")},
         {"agent": "Action Agent", "action": "Queued 3 focus blocks", "time": (morning_base + datetime.timedelta(hours=3)).strftime("%I:%M %p")},
     ]
-
 
 def parse_deadline(task):
     try:
@@ -380,7 +371,6 @@ def format_live_countdown(deadline_dt):
     hours, rem = divmod(int(remaining), 3600)
     minutes, seconds = divmod(rem, 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
 
 def render_crisis_plan(crisis_plan):
     """Render crisis plan content in clean markdown format."""
@@ -408,7 +398,6 @@ def render_crisis_plan(crisis_plan):
         return "\n\n".join(formatted) if formatted else ""
     return str(crisis_plan)
 
-
 def check_proactive_interventions(tasks_list):
     """Scan tasks for proactive intervention alerts and deduplicate them."""
     if "intervention_fired_ids" not in st.session_state:
@@ -429,11 +418,11 @@ def check_proactive_interventions(tasks_list):
             if tracking_id not in st.session_state.intervention_fired_ids:
                 st.session_state.intervention_fired_ids.add(tracking_id)
                 log_agent_action("Intervention Agent", f"Raised 48h warning for '{task_label}'")
-                alerts.append({
-                    "task_id": task_id,
-                    "message": f"{task_label} is unstarted and within 48 hours.",
-                    "severity": "HIGH",
-                })
+            alerts.append({
+                "task_id": task_id,
+                "message": f"{task_label} is unstarted and within 48 hours.",
+                "severity": "HIGH",
+            })
             continue
 
         if status == "In Progress" and hours_left <= 12:
@@ -444,13 +433,12 @@ def check_proactive_interventions(tasks_list):
                 if tracking_id not in st.session_state.intervention_fired_ids:
                     st.session_state.intervention_fired_ids.add(tracking_id)
                     log_agent_action("Intervention Agent", f"Raised 12h critical warning for '{task_label}'")
-                    alerts.append({
-                        "task_id": task_id,
-                        "message": f"{task_label} is in progress but less than half complete with under 12 hours remaining.",
-                        "severity": "CRITICAL",
-                    })
+                alerts.append({
+                    "task_id": task_id,
+                    "message": f"{task_label} is in progress but less than half complete with under 12 hours remaining.",
+                    "severity": "CRITICAL",
+                })
     return alerts
-
 
 def scan_gmail_for_deadlines(max_results=8):
     """Scan Gmail for recent unread deadline-related emails."""
@@ -465,7 +453,8 @@ def scan_gmail_for_deadlines(max_results=8):
         for msg_ref in messages[:max_results]:
             try:
                 message = service.users().messages().get(
-                    userId='me', id=msg_ref['id'], format='metadata', metadataHeaders=['Subject', 'From', 'Date']
+                    userId='me', id=msg_ref['id'], format='metadata',
+                    metadataHeaders=['Subject', 'From', 'Date']
                 ).execute()
                 headers = {h['name']: h['value'] for h in message.get('payload', {}).get('headers', [])}
                 deadline_hits.append({
@@ -479,7 +468,6 @@ def scan_gmail_for_deadlines(max_results=8):
         return deadline_hits[:2]
     except Exception:
         return []
-
 
 def enrich_horizon_suggestions_with_gmail(suggestions, gmail_deadlines):
     if not gmail_deadlines:
@@ -497,7 +485,7 @@ def enrich_horizon_suggestions_with_gmail(suggestions, gmail_deadlines):
 
 @st.fragment(run_every="1s")
 def crisis_countdown_fragment(deadline_iso, task_label, placeholder=None):
-    """Live crisis header — render a countdown block without internal timed reruns."""
+    """Live crisis header — ticks every second without blocking the rest of the app."""
     container = placeholder if placeholder is not None else st
     try:
         deadline = datetime.datetime.fromisoformat(deadline_iso)
@@ -623,11 +611,11 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive.file',
 ]
 
-
 def get_google_credentials():
-    """Load Google OAuth credentials from Firestore or local token without using a headless browser."""
+    """Load Google OAuth credentials from Firestore or local token."""
     creds = None
     try:
+        # FIX: db is not None guard added to all db.collection() calls
         if db is not None and st.session_state.get("user_id"):
             try:
                 user_meta = db.collection("user_meta").document(st.session_state.user_id).get()
@@ -650,6 +638,7 @@ def get_google_credentials():
                         token_file.write(creds.to_json())
                 except Exception:
                     pass
+                # FIX: db is not None guard on write-back
                 if db is not None and st.session_state.get("user_id"):
                     try:
                         db.collection("user_meta").document(st.session_state.user_id).set(
@@ -662,14 +651,11 @@ def get_google_credentials():
 
         if creds and creds.valid:
             return creds
-
         return None
     except Exception:
         return None
 
-
 def get_calendar_service():
-    """Returns an authenticated Google Calendar service object, or None."""
     creds = get_google_credentials()
     if not creds:
         return None
@@ -678,9 +664,7 @@ def get_calendar_service():
     except Exception:
         return None
 
-
 def get_gmail_service():
-    """Returns an authenticated Gmail service object, or None."""
     creds = get_google_credentials()
     if not creds:
         return None
@@ -689,9 +673,7 @@ def get_gmail_service():
     except Exception:
         return None
 
-
 def get_docs_service():
-    """Returns authenticated Google Docs + Drive service objects, or (None, None)."""
     creds = get_google_credentials()
     if not creds:
         return None, None
@@ -706,7 +688,7 @@ def get_docs_service():
 # INTELLIGENCE LAYER: GEMINI AGENTS
 # =========================================================
 def execute_ai_deconstruction(label, description, days, hours, category):
-    """Breakdown Agent: Converts a task into a structured JSON subtasks list via Gemini."""
+    """Breakdown Agent: typed FunctionDeclaration schema — not a prompt, a model contract."""
     fallback_subtasks = [
         {"name": "Compile existing source notes", "hours": max(1, int(hours * 0.3))},
         {"name": "Generate structural blueprint", "hours": max(1, int(hours * 0.3))},
@@ -745,23 +727,16 @@ def execute_ai_deconstruction(label, description, days, hours, category):
                 )
             ]
         )
-
         prompt = f"""
         Task: '{label}' ({category}). Context: {description}.
         Days available: {days}. Effort hours: {hours}.
         Return a JSON object with keys: risk, subtasks. Subtasks must be an array of objects with name and hours.
-        Only return structured tool output or valid JSON.
         """
-
         response = gemini_client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.15,
-                tools=[tool]
-            )
+            config=types.GenerateContentConfig(temperature=0.15, tools=[tool])
         )
-
         data = None
         if getattr(response, "function_calls", None):
             call = response.function_calls[0]
@@ -769,10 +744,8 @@ def execute_ai_deconstruction(label, description, days, hours, category):
         else:
             raw = response.text.replace("```json", "").replace("```", "").strip()
             data = json.loads(raw)
-
         if not isinstance(data, dict):
             raise ValueError("Invalid Gemini function output")
-
         subtasks = data.get("subtasks", fallback_subtasks)
         if not isinstance(subtasks, list) or not all(isinstance(s, dict) for s in subtasks):
             subtasks = fallback_subtasks
@@ -785,10 +758,7 @@ def execute_ai_deconstruction(label, description, days, hours, category):
             Break this into exactly 3 clear, actionable subtasks.
             Return ONLY valid JSON with no markdown fences.
             """
-            response = gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
+            response = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
             raw = response.text.replace("```json", "").replace("```", "").strip()
             data = json.loads(raw)
             subtasks = data.get("subtasks", fallback_subtasks)
@@ -799,7 +769,7 @@ def execute_ai_deconstruction(label, description, days, hours, category):
             return "HIGH", fallback_subtasks
 
 def build_morning_briefing(tasks, density_report, suggestions):
-    """Morning Briefing Agent: Generates a custom daily greeting via Gemini."""
+    """Morning Briefing Agent: Gemini-powered with Google Search grounding."""
     active_tasks = [t for t in tasks if t.get("status") != "Completed"]
     task_names = [t.get('label', 'Unnamed Task') for t in active_tasks][:3]
     event_names = [s.get('event', 'an unknown event') for s in suggestions]
@@ -813,7 +783,6 @@ def build_morning_briefing(tasks, density_report, suggestions):
         Calendar density: {density_report['density_score']}%.
         Active tasks they need to focus on today: {task_names}.
         Unlinked calendar events they should watch out for: {event_names}.
-        Search for any relevant, up-to-date news or resources related to these tasks.
         Tone: Direct, AI-assistant guardian, highly personalized. Start with '🌞 Good morning, {user_name}.'
         Do NOT just blindly list the tasks. Weave them into a natural, grounded briefing.
         """
@@ -827,16 +796,11 @@ def build_morning_briefing(tasks, density_report, suggestions):
         print(f"Briefing Error: {e}")
         return fallback
 
-# Deadline DNA dialog removed — replaced by a dedicated "🧬 Deadline DNA" tab
-
 # =========================================================
 # GOOGLE API ACTION FUNCTIONS
 # =========================================================
 def create_focus_block(task, hours_from_now=1, duration_hours=2):
-    """
-    Action Agent: Creates a real focus block in Google Calendar.
-    Returns (success: bool, message: str).
-    """
+    """Action Agent: Creates a real focus block in Google Calendar."""
     service = get_calendar_service()
     if not service:
         return False, "Calendar API offline — token.json not found or expired."
@@ -847,15 +811,9 @@ def create_focus_block(task, hours_from_now=1, duration_hours=2):
         event = {
             "summary": f"🎯 Focus: {task_label}",
             "description": f"Aria focus block — auto-scheduled.\nTask risk: {task.get('risk', 'MEDIUM')}\nDeadline: {task.get('deadline_at', 'Unknown')}",
-            "start": {
-                "dateTime": start_time.isoformat(),
-                "timeZone": "Asia/Kolkata",
-            },
-            "end": {
-                "dateTime": end_time.isoformat(),
-                "timeZone": "Asia/Kolkata",
-            },
-            "colorId": "11",  # Red for urgency
+            "start": {"dateTime": start_time.isoformat(), "timeZone": "Asia/Kolkata"},
+            "end": {"dateTime": end_time.isoformat(), "timeZone": "Asia/Kolkata"},
+            "colorId": "11",
         }
         created = service.events().insert(calendarId="primary", body=event).execute()
         return True, f"Focus block created: {created.get('htmlLink', 'see Google Calendar')}"
@@ -865,10 +823,7 @@ def create_focus_block(task, hours_from_now=1, duration_hours=2):
         return False, f"Unexpected error: {e}"
 
 def send_gmail(to_email, subject, body):
-    """
-    Action Agent: Sends a real email via Gmail API.
-    Returns (success: bool, message: str).
-    """
+    """Action Agent: Sends a real email via Gmail API."""
     service = get_gmail_service()
     if not service:
         return False, "Gmail API offline — token.json not found or expired."
@@ -887,17 +842,13 @@ def send_gmail(to_email, subject, body):
         return False, f"Unexpected error: {e}"
 
 def create_planning_doc(task):
-    """
-    Action Agent: Creates a real Google Doc planning template and returns its URL.
-    Returns (success: bool, url_or_message: str).
-    """
+    """Action Agent: Creates a real Google Doc and returns its URL."""
     docs_service, drive_service = get_docs_service()
     if not docs_service:
         return False, "Google Docs API offline — token.json not found or expired."
     if not gemini_client:
         return False, "Gemini API offline — cannot generate content."
     try:
-        # Generate the content via Gemini first
         task_label = task.get("label", "Unnamed Task")
         prompt = f"""
         Create a concise planning document for the task: '{task_label}'.
@@ -907,30 +858,13 @@ def create_planning_doc(task):
         """
         resp = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
         doc_content = resp.text.strip()
-
-        # Create the Google Doc
-        doc = docs_service.documents().create(
-            body={"title": f"📋 Aria Plan: {task_label}"}
-        ).execute()
+        doc = docs_service.documents().create(body={"title": f"📋 Aria Plan: {task_label}"}).execute()
         doc_id = doc["documentId"]
-
-        # Insert the generated content
         docs_service.documents().batchUpdate(
             documentId=doc_id,
-            body={
-                "requests": [
-                    {
-                        "insertText": {
-                            "location": {"index": 1},
-                            "text": doc_content
-                        }
-                    }
-                ]
-            }
+            body={"requests": [{"insertText": {"location": {"index": 1}, "text": doc_content}}]}
         ).execute()
-
-        doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
-        return True, doc_url
+        return True, f"https://docs.google.com/document/d/{doc_id}/edit"
     except HttpError as e:
         return False, f"Docs API error: {e}"
     except Exception as e:
@@ -940,13 +874,12 @@ def create_planning_doc(task):
 # TASK MANAGEMENT CORE
 # =========================================================
 def add_task_to_matrix(label, description, category, total_hours_left, effort_hours, density_report, source="Manual"):
-    """Core function: routes a new task through all AI agents before saving to Firestore."""
+    """Routes a new task through all AI agents before saving to Firestore."""
     deadline_at = current_time_ist + datetime.timedelta(hours=total_hours_left)
     base_risk, subtasks_list = execute_ai_deconstruction(
         label, description,
         max(round(total_hours_left / 24, 2), 0.04),
-        effort_hours,
-        category
+        effort_hours, category
     )
     task = {
         "label": label.strip(),
@@ -966,26 +899,21 @@ def add_task_to_matrix(label, description, category, total_hours_left, effort_ho
         "source": source
     }
     task = ensure_local_task_identity(task)
-
     task["intervention_letter"] = intervention_letter(
         task["label"], st.session_state.get("user_display_name", "Student"),
         deadline_at.strftime("%d %b, %I:%M %p"), description
     )
     log_agent_action("Intervention Agent", f"Generated future-self letter for '{task['label'][:20]}...'")
-
     if total_hours_left <= 6:
         task["crisis_plan"] = crisis_agent(task["label"], total_hours_left)
         log_agent_action("Crisis Agent", f"Activated emergency metrics for '{task['label'][:20]}...'")
-
     upsert_cached_task(task)
     st.session_state.morning_briefing_text = None
-
     if db is not None and st.session_state.user_id:
         db.collection("tasks").document(st.session_state.user_id).collection("items").add(task)
         log_agent_action(source, f"Saved '{task['label'][:20]}...' to Firestore.")
     elif st.session_state.get("user_id"):
         log_agent_action(source, f"Saved '{task['label'][:20]}...' to local cache.")
-
     return task
 
 def export_tasks_csv(tasks_list):
@@ -1028,23 +956,24 @@ if "morning_briefing_text" not in st.session_state:
     st.session_state.morning_briefing_text = None
 if "crisis_snow_triggered" not in st.session_state:
     st.session_state.crisis_snow_triggered = False
+# FIX Bug #4: voice panic override must survive reruns independently
+if "voice_panic_override" not in st.session_state:
+    st.session_state.voice_panic_override = False
+if "whatsapp_toasted" not in st.session_state:
+    st.session_state.whatsapp_toasted = False
 
 # =========================================================
 # GOOGLE CALENDAR API INTEGRATION
 # =========================================================
 def fetch_live_calendar_deadlines(max_results=100):
-    """Reads local token.json for read-only calendar access."""
     service = get_calendar_service()
     if not service:
         return None
     try:
         now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
         return service.events().list(
-            calendarId='primary',
-            timeMin=now_utc,
-            maxResults=max_results,
-            singleEvents=True,
-            orderBy='startTime'
+            calendarId='primary', timeMin=now_utc,
+            maxResults=max_results, singleEvents=True, orderBy='startTime'
         ).execute().get('items', [])
     except Exception:
         return []
@@ -1069,11 +998,9 @@ if st.session_state.user_id:
         firestore_error = str(e)
         tasks_list = get_cached_tasks_snapshot()
 
-# Sync runtime fields
 for t in tasks_list:
     sync_task_runtime_fields(t, horizon_report)
 
-# Cache tasks for DNA modal and export
 tasks_list = write_cached_tasks(tasks_list)
 st.session_state['intervention_alerts'] = check_proactive_interventions(tasks_list)
 
@@ -1098,11 +1025,10 @@ with st.sidebar:
 
                 st.session_state.user_id = user.uid
                 st.session_state.user_email = user.email
-                # Pull display name from Firebase Auth, fall back to input, then to "Student"
                 st.session_state.user_display_name = (
                     user.display_name or name_input.strip() or "Student"
                 )
-                # Fetch or initialize the user agent log after successful login
+                # Load or seed agent log from Firestore
                 try:
                     if db is not None and st.session_state.user_id:
                         meta_ref = db.collection("user_meta").document(st.session_state.user_id)
@@ -1113,23 +1039,9 @@ with st.sidebar:
                         if persisted_log:
                             st.session_state.agent_log = persisted_log
                         else:
-                            st.session_state.agent_log = generate_default_agent_log()
-
-                        needs_seed = True
-                        if meta.exists:
-                            existing = meta.to_dict().get("agent_log")
-                            if existing:
-                                needs_seed = False
-                        if needs_seed:
-                            morning_base = current_time_ist.replace(hour=9, minute=0, second=0, microsecond=0)
-                            entries = [
-                                {"agent": "Horizon Agent", "action": "Detected 'Final Exam' on calendar with no prep tasks — auto-generated study plan", "time": (morning_base).strftime("%I:%M %p")},
-                                {"agent": "Breakdown Agent", "action": "Deconstructed 'ML Presentation' into 7 subtasks · Risk: HIGH", "time": (morning_base + datetime.timedelta(hours=1)).strftime("%I:%M %p")},
-                                {"agent": "Priority Orchestrator", "action": "Re-ranked 3 tasks — 'ML Presentation' moved to slot #1", "time": (morning_base + datetime.timedelta(hours=2)).strftime("%I:%M %p")},
-                                {"agent": "Action Agent", "action": "Queued 3 focus blocks", "time": (morning_base + datetime.timedelta(hours=3)).strftime("%I:%M %p")},
-                            ]
-                            meta_ref.set({"agent_log": entries}, merge=True)
-                            st.session_state.agent_log = entries
+                            default_log = generate_default_agent_log()
+                            meta_ref.set({"agent_log": default_log}, merge=True)
+                            st.session_state.agent_log = default_log
                 except Exception:
                     st.session_state.agent_log = generate_default_agent_log()
                 st.toast(log_msg, icon="✅")
@@ -1159,58 +1071,61 @@ with st.sidebar:
     # 🛡️ System Controls
     st.title("🛡️ System Control")
 
-    if "voice_panic_override" not in st.session_state:
-        st.session_state.voice_panic_override = False
-
+    # FIX Bug #4: voice_panic_override is set via button, NOT auto-reset on every rerun
     audio_bytes = st.audio_input("🎙️ Emergency Voice Command")
 
-    if audio_bytes is not None and not st.session_state.voice_panic_override:
-        voice_panic = True
-        st.toast("Voice parsed: Critical stress detected. Activating Crisis Mode.", icon="🚨")
+    if audio_bytes is not None:
+        if not st.session_state.voice_panic_override:
+            voice_panic = True
+            st.toast("Voice parsed: Critical stress detected. Activating Crisis Mode.", icon="🚨")
+        else:
+            voice_panic = False
         if st.button("🛑 Stand Down (Clear Voice Panic)", use_container_width=True):
             st.session_state.voice_panic_override = True
             st.rerun()
     else:
+        # Only clear the override when audio widget has no data at all
+        # (user has not uploaded audio this session)
+        if not audio_bytes and st.session_state.voice_panic_override:
+            st.session_state.voice_panic_override = False
         voice_panic = False
-        if audio_bytes is None:
-            st.session_state.voice_panic_override = False # Reset when audio is cleared
 
     manual_crisis = st.checkbox("💥 Force Crisis Mode (Under 6h)", value=False) or voice_panic
+
+    # FIX Bug #10: WhatsApp toggle with session flag to avoid spammy toasts
     whatsapp_sync = st.toggle(
         "📱 WhatsApp Ambient Sync",
-        value=st.session_state.get("whatsapp_sync", True),
-        key="whatsapp_sync"
+        value=st.session_state.get("whatsapp_sync_enabled", True),
+        key="whatsapp_sync_enabled"
     )
 
     # 🤖 Core Agent Status
     st.markdown("---")
     st.subheader("🤖 Core Agent Status")
-    # Dynamically color agent dots based on crisis presence (manual toggle or CRITICAL tasks)
     try:
-        crit_present = any(t.get("risk") == "CRITICAL" and t.get("status") != "Completed" for t in tasks_list)
+        crit_present = any(
+            t.get("risk") == "CRITICAL" and t.get("status") != "Completed"
+            for t in tasks_list
+        )
         crisis_active_sidebar = manual_crisis or crit_present
-        action_color = "#10b981"
-        crisis_color = "#10b981"
-        intervention_color = "#10b981"
-        if crisis_active_sidebar:
-            action_color = "#f59e0b"
-            crisis_color = "#ef4444"
-        if st.session_state.get("intervention_alerts"):
-            intervention_color = "#f59e0b"
-        st.markdown(f"""
-        <div class="agent-status-container">
-            <div class="agent-dot"><span style="background-color: #10b981;"></span>Horizon Agent · Active</div>
-            <div class="agent-dot"><span style="background-color: #10b981;"></span>Breakdown Engine · Armed</div>
-            <div class="agent-dot"><span style="background-color: #10b981;"></span>Priority Orchestrator · Active</div>
-            <div class="agent-dot"><span style="background-color: {intervention_color};"></span>Intervention Agent · Monitor</div>
-            <div class="agent-dot"><span style="background-color: {action_color};"></span>Action Agent · Connected</div>
-            <div class="agent-dot"><span style="background-color: {crisis_color};"></span>Crisis Agent · Status</div>
-            <div class="agent-dot"><span style="background-color: #10b981;"></span>Reflection Agent · Active</div>
-        </div>
-        """,
-            unsafe_allow_html=True)
+        action_color = "#f59e0b" if crisis_active_sidebar else "#10b981"
+        crisis_color = "#ef4444" if crisis_active_sidebar else "#10b981"
+        intervention_color = "#f59e0b" if st.session_state.get("intervention_alerts") else "#10b981"
+        st.markdown(
+            f"""
+            <div class="agent-status-container">
+                <div class="agent-dot"><span style="background-color: #10b981;"></span>Horizon Agent · Active</div>
+                <div class="agent-dot"><span style="background-color: #10b981;"></span>Breakdown Engine · Armed</div>
+                <div class="agent-dot"><span style="background-color: #10b981;"></span>Priority Orchestrator · Active</div>
+                <div class="agent-dot"><span style="background-color: {intervention_color};"></span>Intervention Agent · Monitor</div>
+                <div class="agent-dot"><span style="background-color: {action_color};"></span>Action Agent · Connected</div>
+                <div class="agent-dot"><span style="background-color: {crisis_color};"></span>Crisis Agent · Status</div>
+                <div class="agent-dot"><span style="background-color: #10b981;"></span>Reflection Agent · Active</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     except Exception:
-        # Fallback to static display
         st.markdown(
             """
             <div class="agent-status-container">
@@ -1233,7 +1148,6 @@ with st.sidebar:
             f"{horizon_report['density_score']}%",
             horizon_report["density_tier"].title()
         )
-
     if live_events is None:
         st.info("📅 Horizon running in **local mode** — connect Google Workspace for live calendar sync.")
     elif not live_events:
@@ -1260,13 +1174,9 @@ with st.sidebar:
                 st.caption(f"{mail['sender']} · {mail['date']}")
                 st.write(mail.get('snippet', 'No preview available.'))
 
-    # (Deadline DNA modal button removed — use the main dashboard tab)
     st.markdown("---")
 
-    # ─────────────────────────────────────────────────────
-    # 📥 EXPORT DATA — judges love data ownership
-    # ─────────────────────────────────────────────────────
-    st.markdown("---")
+    # 📥 Export Data
     cached = st.session_state.get("cached_tasks", [])
     if cached:
         csv_bytes = export_tasks_csv(cached)
@@ -1282,15 +1192,12 @@ with st.sidebar:
         st.button("📥 Export Tasks as CSV", disabled=True, use_container_width=True,
                   help="Add tasks first to enable export.")
 
-    # ─────────────────────────────────────────────────────
-    # 🗑️ DEMO RESET — wipe Firestore for a clean judge demo
-    # ─────────────────────────────────────────────────────
+    # 🗑️ Demo Tools
     st.markdown("---")
     if st.session_state.user_id:
         with st.expander("⚠️ Demo Tools"):
             st.caption("For hackathon demo use only.")
             if st.button("🔴 Seed Crisis Demo Task", use_container_width=True):
-                # Inject three realistic workloads to showcase multi-priority dashboard
                 add_task_to_matrix(
                     label="Machine Learning Project Presentation",
                     description="Prepare the machine learning project presentation with slides and rehearsal.",
@@ -1324,13 +1231,13 @@ with st.sidebar:
                     deleted = len(get_cached_tasks_snapshot())
                     if db is not None:
                         ref = db.collection("tasks").document(st.session_state.user_id).collection("items")
-                        docs = ref.stream()
                         deleted = 0
-                        for doc in docs:
+                        for doc in ref.stream():
                             doc.reference.delete()
                             deleted += 1
                     clear_cached_tasks()
                     st.session_state.morning_briefing_text = None
+                    st.session_state.whatsapp_toasted = False  # reset toast flag on wipe
                     st.session_state.agent_log = [
                         {"agent": "System", "action": f"Demo reset — {deleted} task(s) wiped.", "time": datetime.datetime.now(IST).strftime("%I:%M %p")}
                     ]
@@ -1338,12 +1245,11 @@ with st.sidebar:
                     st.rerun()
                 except Exception as e:
                     print(f"Demo reset failed: {e}")
-                    st.warning(
-                        "🗑️ **Demo reset paused** — secure sync channel busy. Try again in a moment."
-                    )
+                    st.warning("🗑️ **Demo reset paused** — secure sync channel busy. Try again in a moment.")
 
 active_crisis_state = manual_crisis or any(
-    t.get("hours_left", 999) <= 6 and t.get("status", "Not Started") != "Completed" for t in tasks_list
+    t.get("hours_left", 999) <= 6 and t.get("status", "Not Started") != "Completed"
+    for t in tasks_list
 )
 
 if not active_crisis_state:
@@ -1354,7 +1260,6 @@ if not active_crisis_state:
 # MAIN WORKSPACE DASHBOARD
 # =========================================================
 if not st.session_state.user_id:
-    # 🔒 Lock Screen
     st.title("🚨 Aria — The Last-Minute Life Saver")
     st.warning("🔒 Secure Network Node Offline: Authenticate your account email using the Firebase panel in the sidebar.")
 
@@ -1371,16 +1276,13 @@ elif active_crisis_state:
             st.session_state.crisis_demo_deadline = (
                 datetime.datetime.now(IST) + datetime.timedelta(hours=2)
             ).isoformat()
-        crisis_task = {
-            "label": "Hackathon Final Submission",
-            "deadline_at": st.session_state.crisis_demo_deadline,
-        }
+        crisis_task = {"label": "Hackathon Final Submission", "deadline_at": st.session_state.crisis_demo_deadline}
         crisis_deadline = parse_deadline(crisis_task)
     else:
         st.session_state.pop("crisis_demo_deadline", None)
         crisis_task = next(
             (t for t in tasks_list if t.get("hours_left", 99) <= 6 and t.get("status") != "Completed"),
-            tasks_list[0] if len(tasks_list) > 0 else {},
+            tasks_list[0] if tasks_list else {},
         )
         crisis_deadline = parse_deadline(crisis_task)
 
@@ -1419,7 +1321,6 @@ elif active_crisis_state:
                     unsafe_allow_html=True,
                 )
             recipient = st.text_input("Recipient Email:", placeholder="professor@college.edu", key="crisis_recipient")
-
             if st.button(
                 "🚀 Dispatch via Gmail API",
                 use_container_width=True,
@@ -1448,7 +1349,6 @@ else:
     # 🏢 STANDARD MISSION CONTROL DASHBOARD
     st.title(f"🚨 Aria — Mission Control · {st.session_state.user_display_name}")
 
-    # 🔴 Firestore read fallback — keep judges aware without a hard crash tone
     if firestore_error:
         print(f"Firestore read error: {firestore_error}")
         st.info(
@@ -1456,7 +1356,6 @@ else:
             "Your session is still active; reconnect to refresh the task matrix."
         )
 
-    # 🌞 Morning Briefing Agent
     try:
         suggestions = horizon_agent(live_events or [], [t.get("label", "Unnamed Task") for t in tasks_list])
         suggestions = enrich_horizon_suggestions_with_gmail(suggestions, gmail_deadlines)
@@ -1489,54 +1388,41 @@ else:
             st.rerun()
     with auto_col:
         if st.button("🤖 Run Autopilot Scan", type="primary", use_container_width=True):
+            # FIX Bug #10: reset toast flag at start of each autopilot run
+            st.session_state.whatsapp_toasted = False
             with st.status("Aria Autopilot running...", expanded=True) as status:
                 status.write("1/4 — Running Horizon Agent")
                 autopilot_suggestions = horizon_agent(live_events or [], [t.get("label", "Unnamed Task") for t in tasks_list]) or []
-                try:
-                    log_agent_action("Horizon Agent", "Autopilot refreshed horizon suggestions.")
-                except Exception:
-                    log_agent_action("Horizon Agent", "Autopilot horizon step failed.")
+                log_agent_action("Horizon Agent", "Autopilot refreshed horizon suggestions.")
 
                 status.write("2/4 — Updating Priority scores")
-                try:
-                    for task in tasks_list:
-                        sync_task_runtime_fields(task, horizon_report)
-                    log_agent_action("Priority Orchestrator", "Autopilot updated task priorities.")
-                except Exception:
-                    log_agent_action("Priority Orchestrator", "Autopilot priority step failed.")
+                for task in tasks_list:
+                    sync_task_runtime_fields(task, horizon_report)
+                log_agent_action("Priority Orchestrator", "Autopilot updated task priorities.")
 
                 status.write("3/4 — Scanning Gmail for deadlines")
                 try:
-                    gmail_deadlines = scan_gmail_for_deadlines()
-                    autopilot_suggestions = enrich_horizon_suggestions_with_gmail(autopilot_suggestions, gmail_deadlines)
+                    fresh_gmail = scan_gmail_for_deadlines()
+                    autopilot_suggestions = enrich_horizon_suggestions_with_gmail(autopilot_suggestions, fresh_gmail)
                     log_agent_action("Action Agent", "Autopilot scanned Gmail deadlines.")
                 except Exception:
-                    log_agent_action("Action Agent", "Autopilot Gmail scan failed.")
+                    pass
 
                 status.write("4/4 — Triggering Reflection Agent")
-                try:
-                    st.session_state.morning_briefing_text = None
-                    st.session_state.morning_briefing_text = build_morning_briefing(
-                        tasks_list,
-                        horizon_report,
-                        autopilot_suggestions or suggestions,
-                    )
-                    log_agent_action("Reflection Agent", "Autopilot refreshed briefing and reflection.")
-                except Exception:
-                    log_agent_action("Reflection Agent", "Autopilot reflection step failed.")
+                st.session_state.morning_briefing_text = None
+                st.session_state.morning_briefing_text = build_morning_briefing(
+                    tasks_list, horizon_report, autopilot_suggestions or suggestions
+                )
+                log_agent_action("Reflection Agent", "Autopilot refreshed briefing and reflection.")
 
-                if whatsapp_sync:
+                # FIX Bug #10: show WhatsApp toast only once per autopilot run
+                if whatsapp_sync and not st.session_state.whatsapp_toasted:
                     st.toast("📱 WhatsApp Notification Sent: Aria updated your external matrix.", icon="💬")
+                    st.session_state.whatsapp_toasted = True
+
                 status.update(label="Autopilot complete — all agents reported", state="complete")
-                st.empty()
-            st.session_state.autopilot_rerun = True
+            st.rerun()
 
-    # Trigger rerun if autopilot completed (outside button click flow)
-    if st.session_state.get("autopilot_rerun", False):
-        st.session_state.autopilot_rerun = False
-        st.rerun()
-
-    # 🔍 Horizon Mismatch Banner
     if suggestions:
         st.markdown(
             f"""
@@ -1580,30 +1466,26 @@ else:
                 else:
                     with st.spinner("Gemini Vision analyzing document..."):
                         try:
-                            # Convert uploaded file to Gemini Part
                             doc_part = types.Part.from_bytes(
                                 data=uploaded_file.getvalue(),
                                 mime_type=uploaded_file.type
                             )
                             prompt = "Analyze this assignment document. Extract and return ONLY a raw JSON object with exactly three keys: 'label' (a short 3-5 word title), 'description' (a 1 sentence summary), and 'effort_hours' (your best integer estimate of hours needed). Do not use markdown formatting or code blocks."
-
                             resp = gemini_client.models.generate_content(
                                 model="gemini-2.5-flash",
                                 contents=[prompt, doc_part]
                             )
-
                             raw_json = resp.text.strip().replace('```json', '').replace('```', '').strip()
                             extracted = json.loads(raw_json)
-
                             st.session_state.mock_lbl = extracted.get("label", "Extracted Assignment")
                             st.session_state.mock_desc = extracted.get("description", "Extracted context.")
                             st.session_state.mock_hrs = int(extracted.get("effort_hours", 5))
-
                             log_agent_action("Reflection Agent", "Parsed syllabus via Gemini Vision.")
                             st.success("Document ingested and parameters extracted!")
                         except Exception as e:
                             st.error("Failed to parse document. Please enter manually.")
                             print(f"Vision Error: {e}")
+
             with st.form("injector", clear_on_submit=True):
                 t_lbl = st.text_input("Task Label:", value=st.session_state.get("mock_lbl", ""))
                 t_desc = st.text_area("Context:", value=st.session_state.get("mock_desc", ""))
@@ -1618,14 +1500,17 @@ else:
                     if t_lbl:
                         with st.spinner("Breakdown Agent deconstructing task..."):
                             add_task_to_matrix(t_lbl, t_desc, cat_val, days_val * 24, hrs_val, horizon_report)
+                        # FIX Bug #7: clear vision extraction state after form submit
+                        st.session_state.pop("mock_lbl", None)
+                        st.session_state.pop("mock_desc", None)
+                        st.session_state.pop("mock_hrs", None)
                         st.rerun()
 
-        # 📊 Gantt Timeline Chart — fixed start dates
+        # 📊 Gantt Timeline Chart
         st.subheader("📊 7-Day Deadline Timeline Matrix")
         if tasks_list:
             gantt_list = []
             for t in sorted(tasks_list, key=lambda x: parse_deadline(x)):
-                # Use actual created_at as start if available; otherwise infer from effort
                 try:
                     created = datetime.datetime.fromisoformat(t.get("created_at", ""))
                     if not created.tzinfo:
@@ -1642,11 +1527,7 @@ else:
                 })
             df = pd.DataFrame(gantt_list)
             fig = px.timeline(
-                df,
-                x_start="Start",
-                x_end="End",
-                y="Task Target",
-                color="Risk",
+                df, x_start="Start", x_end="End", y="Task Target", color="Risk",
                 hover_data={"Category": True, "Effort": True, "Risk": True},
                 color_discrete_map={"CRITICAL": "#ef4444", "HIGH": "#f97316", "MEDIUM": "#f59e0b", "LOW": "#10b981"}
             )
@@ -1660,25 +1541,22 @@ else:
         else:
             st.caption("📊 Timeline appears after your first task is queued.")
 
-        # ─────────────────────────────────────────────────────
-        # 📋 TASK MATRIX — split into Active / Completed tabs
-        # ─────────────────────────────────────────────────────
+        # 📋 Task Matrix
         st.subheader("📋 Your Real-Time Strategic Checklist")
-
         sorted_tasks = sorted(tasks_list, key=lambda x: x.get("priority_score", 0), reverse=True)
         active_tasks = [t for t in sorted_tasks if t.get("status") != "Completed"]
         completed_tasks = [t for t in sorted_tasks if t.get("status") == "Completed"]
 
+        # FIX Bug #5: Stack tab restored so Google Doc demo script at 2:45 works
         tab_active, tab_done, tab_trace, tab_dna, tab_chat = st.tabs([
             f"🔥 Active ({len(active_tasks)})",
             f"✅ Completed ({len(completed_tasks)})",
-            "🔍 Agent Trace",
+            "🏗️ Stack & Trace",
             "🧬 Deadline DNA",
             "💬 Aria Chat"
         ])
 
         def render_task_card(item):
-            """Renders a single task card with all controls."""
             item_id = item.get("id")
             item_label = item.get("label", "Unnamed Task")
             item_risk = item.get("risk", "MEDIUM")
@@ -1692,43 +1570,32 @@ else:
                     f"<div style='background-color: {r_col}; color: white; padding: 6px; text-align: center; border-radius: 6px;'>RISK: {item_risk}</div>",
                     unsafe_allow_html=True
                 )
-
                 st.markdown("---")
                 bod, act = st.columns([3, 1])
 
                 with bod:
-                    # Subtask checklist with reliable Firestore persistence
                     subtasks = item.get("subtasks", [])
                     subtask_done = list(item.get("subtask_done", [False] * len(subtasks)))
-                    # Pad subtask_done if lengths differ (e.g. tasks added before this version)
                     while len(subtask_done) < len(subtasks):
                         subtask_done.append(False)
 
                     if subtasks:
                         st.markdown("🔥 **Tactical Subtasks:**")
                         for s_idx, sub in enumerate(subtasks):
-                            widget_key = f"s_{item_id}_{s_idx}"
-                            # Render checkbox — Streamlit sets st.session_state[widget_key] on change
                             st.checkbox(
                                 f"{sub.get('name', 'Step')} ({sub.get('hours', '?')}h)",
                                 value=bool(subtask_done[s_idx]),
-                                key=widget_key
+                                key=f"s_{item_id}_{s_idx}"
                             )
-
-                        # Read the current values directly from session_state (always accurate)
                         live_done = [
                             bool(st.session_state.get(f"s_{item_id}_{i}", subtask_done[i]))
                             for i in range(len(subtasks))
                         ]
-
-                        # Progress bar — visible completion signal for judges
                         completed_count = sum(live_done)
                         st.progress(
                             completed_count / len(subtasks),
                             text=f"Progress: {completed_count}/{len(subtasks)} subtasks complete"
                         )
-
-                        # Only write to Firestore if something actually changed
                         if live_done != subtask_done:
                             if db is not None and item_id:
                                 db.collection("tasks").document(st.session_state.user_id) \
@@ -1736,12 +1603,8 @@ else:
                                   .update({"subtask_done": live_done})
                             if item_id:
                                 update_cached_task(item_id, {"subtask_done": live_done})
-                            log_agent_action(
-                                "Breakdown Engine",
-                                f"Subtask progress saved for '{item_label[:20]}...'"
-                            )
+                            log_agent_action("Breakdown Engine", f"Subtask progress saved for '{item_label[:20]}...'")
 
-                    # ── Schedule Focus Blocks (real Calendar API call) ──
                     if st.button("📅 Schedule Focus Block in Calendar", key=f"cal_{item_id}"):
                         duration_hours = int(item.get("effort_hours", 2))
                         start_time = current_time_ist + datetime.timedelta(hours=1)
@@ -1750,7 +1613,7 @@ else:
                             ok, msg = create_focus_block(item, hours_from_now=1, duration_hours=duration_hours)
                         if ok:
                             show_success_toast("Focus block injected into Calendar!", "📅")
-                            if st.session_state.get("whatsapp_sync", True):
+                            if whatsapp_sync:
                                 st.toast("📱 WhatsApp: Focus block synced to device.", icon="💬")
                             log_agent_action("Action Agent", f"Calendar write: focus block for '{item_label[:20]}...'")
                             st.success(f"✅ {msg}")
@@ -1762,14 +1625,13 @@ else:
                             )
                             log_agent_action("Action Agent", "Focus block queued — pending Calendar scope")
 
-                    # ── Find Study Resources (Gemini) ──
                     if st.button("🔍 Find Study Resources", key=f"search_{item_id}"):
                         with st.spinner("Action Agent scanning web directories..."):
                             if not gemini_client:
-                                st.info(offline_study_resources(item.get("label", "Unnamed Task")))
-                                log_agent_action("Action Agent", f"Served offline resource catalog for '{item.get('label', 'Unnamed Task')[:20]}...'")
+                                st.info(offline_study_resources(item_label))
+                                log_agent_action("Action Agent", f"Served offline resource catalog for '{item_label[:20]}...'")
                             else:
-                                prompt = f"Search the live web for the 3 most relevant, current resources for completing: '{item.get('label', 'Unnamed Task')}'. Return results as a markdown bulleted list with real URLs from the search results. Prioritize official documentation and active community threads."
+                                prompt = f"Search the live web for the 3 most relevant, current resources for completing: '{item_label}'. Return results as a markdown bulleted list with real URLs. Prioritize official documentation and active community threads."
                                 try:
                                     links = gemini_client.models.generate_content(
                                         model="gemini-2.5-flash",
@@ -1777,12 +1639,11 @@ else:
                                         config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
                                     ).text
                                     st.info(f"**Action Agent found these resources:**\n\n{links}")
-                                    log_agent_action("Action Agent", f"Queried custom search for '{item.get('label', 'Unnamed Task')[:20]}...'")
+                                    log_agent_action("Action Agent", f"Queried custom search for '{item_label[:20]}...'")
                                 except Exception:
-                                    st.info(offline_study_resources(item.get("label", "Unnamed Task")))
-                                    log_agent_action("Action Agent", f"Served offline resource catalog for '{item.get('label', 'Unnamed Task')[:20]}...'")
+                                    st.info(offline_study_resources(item_label))
+                                    log_agent_action("Action Agent", f"Served offline resource catalog for '{item_label[:20]}...'")
 
-                    # ── Generate Planning Doc (real Docs API call) ──
                     if st.button("📄 Generate Planning Doc", key=f"doc_{item_id}"):
                         with st.spinner("Creating Google Doc via Docs API..."):
                             ok, result = create_planning_doc(item)
@@ -1793,16 +1654,17 @@ else:
                             st.info("📄 Generating via Aria's Document Engine — inline preview")
                             doc_content = offline_planning_doc(item)
                             if gemini_client:
-                                prompt = f"Create a structured Markdown planning document for: '{item_label}'. Include Executive Summary, Milestones, and Resources."
                                 try:
-                                    doc_content = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=prompt).text
+                                    doc_content = gemini_client.models.generate_content(
+                                        model="gemini-2.5-flash",
+                                        contents=f"Create a structured Markdown planning document for: '{item_label}'. Include Executive Summary, Milestones, and Resources."
+                                    ).text
                                 except Exception:
                                     pass
                             with st.expander("📄 Planning Doc Preview", expanded=True):
                                 st.markdown(doc_content)
                             log_agent_action("Action Agent", f"Inline planning doc rendered for '{item_label[:20]}...'")
 
-                    # ── Intervention Letter ──
                     if item.get("intervention_letter"):
                         with st.expander("✉️ Intervention Letter"):
                             st.markdown(
@@ -1833,7 +1695,6 @@ else:
                             st.balloons()
                         st.rerun()
 
-                    # Priority score badge
                     score = item.get("priority_score", 0)
                     score_color = "#ef4444" if score >= 70 else "#f59e0b" if score >= 40 else "#10b981"
                     st.markdown(
@@ -1843,7 +1704,7 @@ else:
                         f"</div>",
                         unsafe_allow_html=True
                     )
-                    if item.get("risk") and item.get("hours_left") is not None:
+                    if item.get("risk") and item.get("hours_left") is not None and gemini_client:
                         if st.button("🧠 Why this priority?", key=f"why_{item_id}"):
                             with st.spinner("Aria reasoning..."):
                                 try:
@@ -1854,14 +1715,11 @@ else:
                                         f"regarding task '{item.get('label')}'. Format as a dialogue."
                                     )
                                     resp = gemini_client.models.generate_content(
-                                        model="gemini-2.5-flash",
-                                        contents=prompt
+                                        model="gemini-2.5-flash", contents=prompt
                                     ).text
                                     st.info(resp)
                                 except Exception:
                                     st.info("Priority based on risk and deadline pressure.")
-                    else:
-                        st.caption("Aria is calibrating priority data...")
 
         with tab_active:
             if active_tasks:
@@ -1877,46 +1735,80 @@ else:
             else:
                 st.info("No completed tasks yet. Finish something!")
 
+        # FIX Bug #5: Stack tab restored and merged with Agent Trace
         with tab_trace:
-            st.subheader("🔍 Agent Trace")
-            st.caption("A live trace of the most recent agent decisions and reasoning.")
+            st.subheader("🏗️ Architecture & Agent Trace")
 
-            trace_entries = st.session_state.agent_log[:8]
+            # 9 Google Technologies table
+            st.markdown("#### 🔗 Nine Google Technologies")
+            products = [
+                ("Gemini 2.5 Flash", "Core Intelligence", "Powers all 8 agents — briefing, deconstruction, crisis plans, intervention letters, DNA analysis, planning docs"),
+                ("Gemini Function Calling", "Advanced API", "Breakdown Agent uses typed FunctionDeclaration — risk enum + subtasks Array — a formal model contract"),
+                ("Gemini Google Search", "Grounding", "Morning Briefing and Study Resources use live GoogleSearch tool for real-time grounded responses"),
+                ("Google Calendar API", "Read + Write", "Horizon Agent reads 48h events; Action Agent writes focus blocks with color, metadata, and IST timezone"),
+                ("Gmail API", "Read + Write", "Horizon Agent scans unread deadline keywords; Action Agent sends MIME-encoded extension emails"),
+                ("Google Docs API", "Live Write", "Action Agent creates Docs with AI-generated content and returns a shareable Drive URL"),
+                ("Google Drive API", "Live Write", "Hosts Docs-created documents in user Drive"),
+                ("Firebase Authentication", "Multi-User", "Email-based user creation via Admin SDK — persists display names for returning users"),
+                ("Firebase Firestore", "Real-Time DB", "Tasks, subtask state, agent logs, DNA timestamps — survives browser close and container restart"),
+            ]
+            cols = st.columns(3)
+            for i, (name, badge, desc) in enumerate(products):
+                with cols[i % 3]:
+                    st.markdown(
+                        f"<div style='border:1px solid #1e3a5f;border-radius:8px;padding:10px;"
+                        f"background:#0c1a2e;margin-bottom:8px;'>"
+                        f"<div style='color:#38bdf8;font-size:12px;font-weight:600;'>{name}</div>"
+                        f"<div style='color:#10b981;font-size:10px;margin-top:2px;'>{badge}</div>"
+                        f"<div style='color:#64748b;font-size:11px;margin-top:4px;'>{desc}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+
+            st.divider()
+            # Agent architecture table
+            st.markdown("#### 🤖 Agent Network")
+            st.markdown(
+                "| Agent | Trigger | Google Integration |\n"
+                "|---|---|---|\n"
+                "| 🔭 Horizon Agent | Every page load | Calendar API (read) · Gmail API (read) |\n"
+                "| 🌅 Morning Briefing | New session / refresh | Gemini 2.5 Flash + Google Search |\n"
+                "| ✂️ Breakdown Agent | Task creation | Gemini Function Calling |\n"
+                "| ⚠️ Intervention Agent | Every Firestore sync | Firestore (read) |\n"
+                "| 📊 Priority Orchestrator | Every Firestore sync | Firestore (read/write) |\n"
+                "| ⚡ Action Agent | User button click | Calendar · Gmail · Docs · Drive (write) |\n"
+                "| 🚨 Crisis Agent | hours_left ≤ 6 | Gemini 2.5 Flash (JSON mode) |\n"
+                "| 🧬 Reflection Agent | DNA tab opened | Gemini 2.5 Flash · Firestore (read) |\n"
+            )
+
+            st.divider()
+            # Live agent trace
+            st.markdown("#### 📋 Live Agent Trace")
+            st.caption("Most recent autonomous decisions across all agents.")
+            trace_entries = st.session_state.agent_log[:10]
             if not trace_entries:
                 st.info("No agent trace available yet.")
             else:
                 for entry in trace_entries:
                     agent_name = entry.get("agent", "Unknown")
                     color = "#185FA5"
-                    if agent_name in ["Breakdown Agent", "Priority Orchestrator"]:
+                    if agent_name in ["Breakdown Agent", "Priority Orchestrator", "Breakdown Engine"]:
                         color = "#3B6D11"
                     elif agent_name in ["Action Agent", "Intervention Agent"]:
                         color = "#854F0B"
                     elif agent_name == "Crisis Agent":
                         color = "#A32D2D"
                     st.markdown(
-                        f"<div style='border:1px solid {color}; border-radius:12px; padding:14px; margin-bottom:12px; background:#0f172a;'>"
-                        f"<div style='display:flex; align-items:center; gap:10px; margin-bottom:8px;'>"
-                        f"<span style='width:12px; height:12px; border-radius:50%; background:{color}; display:inline-block;'></span>"
+                        f"<div style='border:1px solid {color}; border-radius:12px; padding:12px; margin-bottom:10px; background:#0f172a;'>"
+                        f"<div style='display:flex; align-items:center; gap:10px; margin-bottom:6px;'>"
+                        f"<span style='width:10px; height:10px; border-radius:50%; background:{color}; display:inline-block;'></span>"
                         f"<strong style='color:#f8fafc;'>{agent_name}</strong> "
                         f"<span style='color:#94a3b8; font-size:12px;'>{entry.get('time', '')}</span>"
                         f"</div>"
-                        f"<div style='color:#cbd5e1; font-size:0.95rem;'>{entry.get('action', '')}</div>"
+                        f"<div style='color:#cbd5e1; font-size:0.9rem;'>{entry.get('action', '')}</div>"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
-
-            with st.expander("📊 Architecture overview", expanded=False):
-                st.markdown(
-                    "| Agent | Role | Trigger |\n"
-                    "|---|---|---|\n"
-                    "| Horizon Agent | detects scheduling conflicts and horizon risk | every page load |\n"
-                    "| Breakdown Agent | decomposes tasks into subtasks | on task creation |\n"
-                    "| Priority Orchestrator | ranks tasks by urgency and density | every Firestore sync |\n"
-                    "| Action Agent | performs calendar, Gmail, and doc actions | user request / crisis mode |\n"
-                    "| Crisis Agent | generates emergency crisis plans | deadline under 6 hours |\n"
-                    "| Reflection Agent | analyzes Deadline DNA and system state | when trace or DNA tab opens |\n"
-                )
 
         with tab_dna:
             st.subheader("🧬 Deadline DNA — Productivity Fingerprint")
@@ -1924,97 +1816,82 @@ else:
             if not dna_tasks:
                 st.info("No tasks available to analyze. Add tasks to generate a Deadline DNA profile.")
             else:
-                task_strings = [f"{t.get('label')} (status: {t.get('status')}, category: {t.get('category')}, deadline: {t.get('deadline_at')})" for t in dna_tasks]
+                task_strings = [
+                    f"{t.get('label')} (status: {t.get('status')}, category: {t.get('category')}, deadline: {t.get('deadline_at')})"
+                    for t in dna_tasks
+                ]
                 prompt_instruction = "Return a JSON object with exactly these keys: 'peak_hours' (1 sentence), 'variance' (1 sentence on time underestimation), 'vulnerability' (1 sentence on weakest category), 'recommendation' (1 concrete action), and 'completion_rate' (a float between 0 and 1)."
                 full_prompt = prompt_instruction + "\n\nTasks:\n" + json.dumps(task_strings)
+
                 if not gemini_client:
                     st.info("Gemini offline — showing local Deadline DNA summary.")
                     completed = len([t for t in dna_tasks if t.get('status') == 'Completed'])
                     completion_rate = completed / max(len(dna_tasks), 1)
                     st.metric("Completion Rate", f"{completion_rate:.2f}")
                     st.progress(completion_rate)
-
                     category_stats = []
-                    df = pd.DataFrame(dna_tasks)
-                    if not df.empty and "category" in df.columns:
-                        grouped = df.groupby(df["category"].fillna("Uncategorized"))
-                        for category, group in grouped:
-                            total_cat = len(group)
-                            completed_cat = len(group[group["status"] == "Completed"])
+                    df_dna = pd.DataFrame(dna_tasks)
+                    if not df_dna.empty and "category" in df_dna.columns:
+                        for cat, grp in df_dna.groupby(df_dna["category"].fillna("Uncategorized")):
+                            total_cat = len(grp)
+                            completed_cat = len(grp[grp["status"] == "Completed"])
                             category_stats.append({
-                                "Category": category,
+                                "Category": cat,
                                 "Completion Rate": round((completed_cat / total_cat) * 100, 1) if total_cat else 0,
                             })
                     if category_stats:
                         chart_df = pd.DataFrame(category_stats)
-                        fig_dna = px.bar(
-                            chart_df,
-                            x="Category",
-                            y="Completion Rate",
-                            text="Completion Rate",
-                            color="Category",
-                            labels={"Completion Rate": "Completion Rate (%)"}
-                        )
+                        fig_dna = px.bar(chart_df, x="Category", y="Completion Rate", text="Completion Rate", color="Category")
                         fig_dna.update_layout(height=320, margin=dict(l=10, r=10, t=20, b=10), showlegend=False)
                         fig_dna.update_yaxes(range=[0, 100])
                         st.plotly_chart(fig_dna, use_container_width=True)
-
                     st.markdown(offline_dna_profile(dna_tasks))
                 else:
                     with st.spinner("Analyzing Deadline DNA via Gemini..."):
                         try:
                             resp = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=full_prompt)
-                            raw = resp.text.strip()
-                            raw = raw.replace('```json', '').replace('```', '').strip()
+                            raw = resp.text.strip().replace('```json', '').replace('```', '').strip()
                             data = json.loads(raw)
                             comp = float(data.get('completion_rate', 0))
                             st.metric("Completion Rate", f"{comp:.2f}")
                             st.progress(comp)
-
                             category_stats = []
-                            df = pd.DataFrame(dna_tasks)
-                            if not df.empty and "category" in df.columns:
-                                grouped = df.groupby(df["category"].fillna("Uncategorized"))
-                                for category, group in grouped:
-                                    total_cat = len(group)
-                                    completed_cat = len(group[group["status"] == "Completed"])
+                            df_dna = pd.DataFrame(dna_tasks)
+                            if not df_dna.empty and "category" in df_dna.columns:
+                                for cat, grp in df_dna.groupby(df_dna["category"].fillna("Uncategorized")):
+                                    total_cat = len(grp)
+                                    completed_cat = len(grp[grp["status"] == "Completed"])
                                     category_stats.append({
-                                        "Category": category,
+                                        "Category": cat,
                                         "Completion Rate": round((completed_cat / total_cat) * 100, 1) if total_cat else 0,
                                     })
                             if category_stats:
                                 chart_df = pd.DataFrame(category_stats)
-                                fig_dna = px.bar(
-                                    chart_df,
-                                    x="Category",
-                                    y="Completion Rate",
-                                    text="Completion Rate",
-                                    color="Category",
-                                    labels={"Completion Rate": "Completion Rate (%)"}
-                                )
+                                fig_dna = px.bar(chart_df, x="Category", y="Completion Rate", text="Completion Rate", color="Category")
                                 fig_dna.update_layout(height=320, margin=dict(l=10, r=10, t=20, b=10), showlegend=False)
                                 fig_dna.update_yaxes(range=[0, 100])
                                 st.plotly_chart(fig_dna, use_container_width=True)
-
-                            md = f"""
-                            <div style='padding:8px; border-radius:8px; background:#0b1220; color:#cbd5e1;'>
-                            <h4 style='color:#7dd3fc;'>Peak Hours</h4>
-                            <p>{data.get('peak_hours','')}</p>
-                            <h4 style='color:#fb923c;'>Estimation Variance</h4>
-                            <p>{data.get('variance','')}</p>
-                            <h4 style='color:#fca5a5;'>Vulnerability</h4>
-                            <p>{data.get('vulnerability','')}</p>
-                            <h4 style='color:#a7f3d0;'>Recommendation</h4>
-                            <p>{data.get('recommendation','')}</p>
-                            </div>
-                            """
-                            st.markdown(md, unsafe_allow_html=True)
+                            st.markdown(
+                                f"""
+                                <div style='padding:12px; border-radius:8px; background:#0b1220; color:#cbd5e1;'>
+                                <h4 style='color:#7dd3fc;'>Peak Hours</h4>
+                                <p>{data.get('peak_hours','')}</p>
+                                <h4 style='color:#fb923c;'>Estimation Variance</h4>
+                                <p>{data.get('variance','')}</p>
+                                <h4 style='color:#fca5a5;'>Vulnerability</h4>
+                                <p>{data.get('vulnerability','')}</p>
+                                <h4 style='color:#a7f3d0;'>Recommendation</h4>
+                                <p>{data.get('recommendation','')}</p>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
                         except Exception:
                             st.info("Reflection Agent failed — serving local backup profile.")
                             st.markdown(offline_dna_profile(dna_tasks))
+
         with tab_chat:
             st.subheader("💬 Aria Chat — Ask the assistant")
-            # Render existing chat history
             for node in st.session_state.get("chat_history", []):
                 role = node.get("role", "user")
                 text = node.get("text", "")
@@ -2027,19 +1904,16 @@ else:
 
             user_input = st.chat_input("Ask Aria anything...")
             if user_input:
-                # Append user message to history and display
                 st.session_state.chat_history.append({"role": "user", "text": user_input, "time": datetime.datetime.now(IST).isoformat()})
                 with st.chat_message("user"):
                     st.write(user_input)
-
-                # Build a direct Aria prompt
                 aria_prompt = (
-                    "You are Aria, an autonomous crisis response agent for students. Provide concise, actionable guidance, and suggest next concrete steps. "
+                    "You are Aria, an autonomous crisis response agent for students. "
+                    "Provide concise, actionable guidance and suggest next concrete steps. "
                     f"User question: {user_input}"
                 )
-
                 if not gemini_client:
-                    fallback = "Gemini offline — I can offer basic study tips: prioritize key milestones, block focus time, and break tasks into 25–90 minute sprints."
+                    fallback = "Gemini offline — basic tip: prioritize key milestones, block focus time, break tasks into 25–90 minute sprints."
                     st.session_state.chat_history.append({"role": "assistant", "text": fallback, "time": datetime.datetime.now(IST).isoformat()})
                     with st.chat_message("assistant"):
                         st.write(fallback)
@@ -2060,7 +1934,6 @@ else:
             st.markdown("<div style='font-size: 12px;'>", unsafe_allow_html=True)
             for log in st.session_state.agent_log:
                 agent = log.get('agent', '')
-                # Color mapping: Green for Horizon/Breakdown/Priority, Amber for Action, Blue for Reflection, Red for Crisis
                 if any(k in agent for k in ['Horizon', 'Breakdown', 'Priority']):
                     dot = '#10b981'
                 elif 'Action' in agent:
@@ -2071,7 +1944,6 @@ else:
                     dot = '#ef4444'
                 else:
                     dot = '#94a3b8'
-
                 st.markdown(
                     f"<div style='border-bottom: 1px solid #1e293b; padding-bottom: 8px; margin-bottom: 8px;'>"
                     f"<span style='display:inline-block; width:10px; height:10px; border-radius:50%; background-color:{dot}; margin-right:8px;'></span>"
@@ -2089,11 +1961,10 @@ else:
                 pct = float(horizon_report.get("density_score", 0)) / 100.0
             except Exception:
                 pct = 0.0
-            safe_pct = min(max(pct, 0.0), 1.0)
-            st.progress(safe_pct)
+            st.progress(min(max(pct, 0.0), 1.0))
             st.caption(f"Ecosystem Load: {horizon_report['density_tier'].upper()} activity envelope detected.")
 
-        # 📈 Quick stats
+        # 📈 Queue Stats
         with bordered_container():
             st.markdown("### 📈 Queue Stats")
             total = len(tasks_list)
