@@ -453,7 +453,7 @@ def scan_gmail_for_deadlines(max_results=8):
         for msg_ref in messages[:max_results]:
             try:
                 message = service.users().messages().get(
-                    userId='me', id=msg_ref['id'], format='metadata',
+                    userId='me', id=msg_ref.get('id', ''), format='metadata',
                     metadataHeaders=['Subject', 'From', 'Date']
                 ).execute()
                 headers = {h['name']: h['value'] for h in message.get('payload', {}).get('headers', [])}
@@ -475,9 +475,9 @@ def enrich_horizon_suggestions_with_gmail(suggestions, gmail_deadlines):
     enriched = list(suggestions or [])
     for mail in gmail_deadlines:
         enriched.append({
-            "event": f"Gmail deadline keyword: {mail['subject']}",
+            "event": f"Gmail deadline keyword: {mail.get('subject', 'No Subject')}",
             "event_start": mail.get('date', ''),
-            "suggested_task": f"Review email: {mail['subject']}",
+            "suggested_task": f"Review email: {mail.get('subject', 'No Subject')}",
             "urgency": "high",
             "reason": "Detected urgent deadline-related email in Gmail.",
         })
@@ -780,7 +780,7 @@ def build_morning_briefing(tasks, density_report, suggestions):
     try:
         prompt = f"""
         Write a 2-sentence morning briefing for {user_name}.
-        Calendar density: {density_report['density_score']}%.
+        Calendar density: {density_report.get('density_score', 0)}%.
         Active tasks they need to focus on today: {task_names}.
         Unlinked calendar events they should watch out for: {event_names}.
         Tone: Direct, AI-assistant guardian, highly personalized. Start with '🌞 Good morning, {user_name}.'
@@ -892,7 +892,7 @@ def add_task_to_matrix(label, description, category, total_hours_left, effort_ho
         "effort_hours": effort_hours,
         "base_risk": base_risk,
         "risk": base_risk,
-        "horizon_density_score": density_report["density_score"],
+        "horizon_density_score": density_report.get("density_score", 0),
         "subtasks": subtasks_list,
         "subtask_done": [False] * len(subtasks_list),
         "status": "Not Started",
@@ -900,20 +900,20 @@ def add_task_to_matrix(label, description, category, total_hours_left, effort_ho
     }
     task = ensure_local_task_identity(task)
     task["intervention_letter"] = intervention_letter(
-        task["label"], st.session_state.get("user_display_name", "Student"),
+        task.get("label", "Unnamed Task"), st.session_state.get("user_display_name", "Student"),
         deadline_at.strftime("%d %b, %I:%M %p"), description
     )
-    log_agent_action("Intervention Agent", f"Generated future-self letter for '{task['label'][:20]}...'")
+    log_agent_action("Intervention Agent", f"Generated future-self letter for '{task.get('label', 'Unnamed Task')[:20]}...'")
     if total_hours_left <= 6:
-        task["crisis_plan"] = crisis_agent(task["label"], total_hours_left)
-        log_agent_action("Crisis Agent", f"Activated emergency metrics for '{task['label'][:20]}...'")
+        task["crisis_plan"] = crisis_agent(task.get("label", "Unnamed Task"), total_hours_left)
+        log_agent_action("Crisis Agent", f"Activated emergency metrics for '{task.get('label', 'Unnamed Task')[:20]}...'")
     upsert_cached_task(task)
     st.session_state.morning_briefing_text = None
     if db is not None and st.session_state.user_id:
         db.collection("tasks").document(st.session_state.user_id).collection("items").add(task)
-        log_agent_action(source, f"Saved '{task['label'][:20]}...' to Firestore.")
+        log_agent_action(source, f"Saved '{task.get('label', 'Unnamed Task')[:20]}...' to Firestore.")
     elif st.session_state.get("user_id"):
-        log_agent_action(source, f"Saved '{task['label'][:20]}...' to local cache.")
+        log_agent_action(source, f"Saved '{task.get('label', 'Unnamed Task')[:20]}...' to local cache.")
     return task
 
 def export_tasks_csv(tasks_list):
@@ -1003,6 +1003,21 @@ for t in tasks_list:
 
 tasks_list = write_cached_tasks(tasks_list)
 st.session_state['intervention_alerts'] = check_proactive_interventions(tasks_list)
+
+# =========================================================
+# CRON TRIGGER FOR TRUE AUTONOMY
+# =========================================================
+if st.query_params.get("cron") == "true":
+    try:
+        alerts = check_proactive_interventions(tasks_list)
+        log_agent_action("System", "Background cron sync executed")
+        if db is not None and st.session_state.get("user_id"):
+            db.collection("user_meta").document(st.session_state.user_id).set(
+                {"cron_last_run": datetime.datetime.now(IST).isoformat()}, merge=True
+            )
+    except Exception as e:
+        print(f"Cron execution error: {e}")
+    st.stop()
 
 # =========================================================
 # USER INTERFACE: APP SIDEBAR
@@ -1145,8 +1160,8 @@ with st.sidebar:
     if live_events is not None:
         st.metric(
             "48h Calendar Density",
-            f"{horizon_report['density_score']}%",
-            horizon_report["density_tier"].title()
+            f"{horizon_report.get('density_score', 0)}%",
+            horizon_report.get("density_tier", "CLEAR").title()
         )
     if live_events is None:
         st.info("📅 Horizon running in **local mode** — connect Google Workspace for live calendar sync.")
@@ -1170,8 +1185,8 @@ with st.sidebar:
         st.subheader("📬 Gmail Deadline Keywords")
         for mail in gmail_deadlines[:2]:
             with bordered_container(st.sidebar):
-                st.markdown(f"**{mail['subject']}**")
-                st.caption(f"{mail['sender']} · {mail['date']}")
+                st.markdown(f"**{mail.get('subject', 'No Subject')}**")
+                st.caption(f"{mail.get('sender', 'Unknown Sender')} · {mail.get('date', '')}")
                 st.write(mail.get('snippet', 'No preview available.'))
 
     st.markdown("---")
@@ -1428,7 +1443,7 @@ else:
             f"""
             <div class='horizon-banner'>
                 <strong>🔍 Horizon Sync Warning</strong><br>
-                Unlinked calendar entry: '{suggestions[0].get('event')}'. No task track exists.
+                Unlinked calendar entry: '{suggestions[0].get('event', 'Unknown Event')}'. No task track exists.
             </div>
             """,
             unsafe_allow_html=True
@@ -1962,7 +1977,7 @@ else:
             except Exception:
                 pct = 0.0
             st.progress(min(max(pct, 0.0), 1.0))
-            st.caption(f"Ecosystem Load: {horizon_report['density_tier'].upper()} activity envelope detected.")
+            st.caption(f"Ecosystem Load: {horizon_report.get('density_tier', 'CLEAR').upper()} activity envelope detected.")
 
         # 📈 Queue Stats
         with bordered_container():
