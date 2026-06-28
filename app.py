@@ -168,7 +168,13 @@ current_time_ist = datetime.datetime.now(IST)
 # =========================================================
 # LIVE FIREBASE INITIALIZATION ENGINE
 # =========================================================
-if not firebase_admin._apps:
+try:
+    firebase_admin.get_app()
+    firebase_initialized = True
+except ValueError:
+    firebase_initialized = False
+
+if not firebase_initialized:
     try:
         cred = None
 
@@ -214,7 +220,7 @@ if not firebase_admin._apps:
             cred = credentials.Certificate("service_account.json")
 
         firebase_admin.initialize_app(cred)
-
+        firebase_initialized = True
     except Exception as e:
         print(f"Firebase initialization error: {e}")
         st.warning(
@@ -241,6 +247,13 @@ except Exception:
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+
+def gemini_offline_answer():
+    return (
+        "Start with the most urgent task: block 60–90 minutes for it, "
+        "break it into 3 concrete next actions, and focus on finishing one action before moving on. "
+        "If Gemini is temporarily unavailable, this is the best way to keep momentum."
+    )
 
 # =========================================================
 # HELPER FUNCTIONS & RUNTIME CALCULATIONS
@@ -1928,17 +1941,18 @@ else:
                     f"User question: {user_input}"
                 )
                 if not gemini_client:
-                    fallback = "Gemini offline — basic tip: prioritize key milestones, block focus time, break tasks into 25–90 minute sprints."
-                    st.session_state.chat_history.append({"role": "assistant", "text": fallback, "time": datetime.datetime.now(IST).isoformat()})
+                    answer = gemini_offline_answer()
+                    st.session_state.chat_history.append({"role": "assistant", "text": answer, "time": datetime.datetime.now(IST).isoformat()})
                     with st.chat_message("assistant"):
-                        st.write(fallback)
+                        st.write(answer)
                 else:
                     with st.chat_message("assistant"):
                         try:
                             resp = gemini_client.models.generate_content(model="gemini-2.5-flash", contents=aria_prompt)
                             answer = resp.text.strip()
-                        except Exception:
-                            answer = "Aria couldn't reach the model — try again later."
+                        except Exception as e:
+                            print(f"Gemini chat error: {e}")
+                            answer = gemini_offline_answer()
                         st.write(answer)
                         st.session_state.chat_history.append({"role": "assistant", "text": answer, "time": datetime.datetime.now(IST).isoformat()})
 
