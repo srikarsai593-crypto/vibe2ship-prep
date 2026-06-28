@@ -38,7 +38,7 @@
 ## 🚀 Live Demo
 
 > [!IMPORTANT]
-> **Live URL:** https://vibe2ship-796680115708.asia-south1.run.app/
+> **Live URL:** https://vibe2ship-796680115708.asia-south1.run.app
 >
 > **One-click demo state:** Log in → open the sidebar → click **🔴 Seed Crisis Demo Task** → watch all six agents activate automatically.
 >
