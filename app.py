@@ -97,7 +97,7 @@ st.markdown(
         margin-bottom: 14px;
     }
     .letter-card:before {
-        content: "\201C";
+        content: "\\201C";
         position: absolute;
         top: 6px;
         left: 14px;
