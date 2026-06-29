@@ -1461,20 +1461,29 @@ else:
                 status.update(label="Autopilot complete — all agents reported", state="complete")
             st.rerun()
 
+    # Force banner to display if either calendar suggestions OR raw unread gmail deadlines exist
+    display_banner_text = None
     if suggestions:
+        display_banner_text = suggestions[0].get('event', 'Unknown Event')
+    elif gmail_deadlines:
+        display_banner_text = f"Gmail match: {gmail_deadlines[0].get('subject', 'No Subject')}"
+
+    if display_banner_text:
         st.markdown(
             f"""
             <div class='horizon-banner'>
                 <strong>🔍 Horizon Sync Warning</strong><br>
-                Unlinked calendar entry: '{suggestions[0].get('event', 'Unknown Event')}'. No task track exists.
+                Unlinked calendar entry: '{display_banner_text}'. No task track exists.
             </div>
             """,
             unsafe_allow_html=True
         )
         if st.button("⚡ Auto-Generate Study Plan Matrix"):
             with st.spinner("Compiling via Gemini..."):
+                # If it came from Gmail, use the Gmail text safely
+                label_text = gmail_deadlines[0].get('subject', 'Prep') if gmail_deadlines else suggestions[0].get('suggested_task', 'Prep')
                 add_task_to_matrix(
-                    label=suggestions[0].get('suggested_task', "Prep"),
+                    label=label_text,
                     description="Automated sync task.",
                     category="Academic",
                     total_hours_left=144,
