@@ -1,11 +1,7 @@
-streamlit>=1.38.0
-pandas>=2.2.0
-plotly>=5.22.0
 firebase-admin>=6.5.0
 google-genai>=0.8.0
-python-dotenv>=1.0.0
 google-api-python-client>=2.129.0
 google-auth-oauthlib>=1.2.0
 google-auth-httplib2>=0.2.0
 pytz>=2024.1
-flask>=3.0.0
+python-dotenv>=1.0.0

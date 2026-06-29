@@ -458,8 +458,16 @@ def scan_gmail_for_deadlines(max_results=8):
     service = get_gmail_service()
     if not service:
         return []
+
+    # FIX 1: Loosened query — subject-field matching catches self-sent test emails
+    # and avoids newer_than recency filter that can miss freshly sent messages.
+    DEADLINE_KEYWORDS = [
+        "due", "deadline", "exam", "assignment", "syllabus", "submission"
+    ]
+    subject_filters = " OR ".join(f"subject:{kw}" for kw in DEADLINE_KEYWORDS)
+    query = f"is:unread ({subject_filters})"
+
     try:
-        query = 'is:unread newer_than:7d (deadline OR due OR submission OR assignment OR exam OR project)'
         response = service.users().messages().list(userId='me', q=query, maxResults=max_results).execute()
         messages = response.get('messages', []) or []
         deadline_hits = []
@@ -470,10 +478,24 @@ def scan_gmail_for_deadlines(max_results=8):
                     metadataHeaders=['Subject', 'From', 'Date']
                 ).execute()
                 headers = {h['name']: h['value'] for h in message.get('payload', {}).get('headers', [])}
+
+                raw_subject = headers.get('Subject', 'No Subject')
+                raw_snippet = message.get('snippet', '').strip()
+
+                # FIX 2: Enforce lowercase matching so "DEADLINE", "Due", etc. are never skipped.
+                subject_clean = raw_subject.lower()
+                snippet_clean = raw_snippet.lower()
+                matched = any(
+                    kw.lower() in subject_clean or kw.lower() in snippet_clean
+                    for kw in DEADLINE_KEYWORDS
+                )
+                if not matched:
+                    continue  # Skip emails that don't actually contain a keyword after normalisation
+
                 deadline_hits.append({
-                    'subject': headers.get('Subject', 'No Subject'),
+                    'subject': raw_subject,          # keep original casing for display
                     'sender': headers.get('From', 'Unknown Sender'),
-                    'snippet': message.get('snippet', '').strip(),
+                    'snippet': raw_snippet,
                     'date': headers.get('Date', ''),
                 })
             except Exception:
@@ -628,7 +650,6 @@ def get_google_credentials():
     """Load Google OAuth credentials from Firestore or local token."""
     creds = None
     try:
-        # FIX: db is not None guard added to all db.collection() calls
         if db is not None and st.session_state.get("user_id"):
             try:
                 user_meta = db.collection("user_meta").document(st.session_state.user_id).get()
@@ -651,7 +672,6 @@ def get_google_credentials():
                         token_file.write(creds.to_json())
                 except Exception:
                     pass
-                # FIX: db is not None guard on write-back
                 if db is not None and st.session_state.get("user_id"):
                     try:
                         db.collection("user_meta").document(st.session_state.user_id).set(
@@ -969,7 +989,6 @@ if "morning_briefing_text" not in st.session_state:
     st.session_state.morning_briefing_text = None
 if "crisis_snow_triggered" not in st.session_state:
     st.session_state.crisis_snow_triggered = False
-# FIX Bug #4: voice panic override must survive reruns independently
 if "voice_panic_override" not in st.session_state:
     st.session_state.voice_panic_override = False
 if "whatsapp_toasted" not in st.session_state:
@@ -1018,19 +1037,16 @@ tasks_list = write_cached_tasks(tasks_list)
 st.session_state['intervention_alerts'] = check_proactive_interventions(tasks_list)
 
 # =========================================================
-# CRON TRIGGER FOR TRUE AUTONOMY
+# AUTONOMOUS CRON SERVICE (MOVED TO CLOUD FUNCTIONS)
 # =========================================================
-if st.query_params.get("cron") == "true":
-    try:
-        alerts = check_proactive_interventions(tasks_list)
-        log_agent_action("System", "Background cron sync executed")
-        if db is not None and st.session_state.get("user_id"):
-            db.collection("user_meta").document(st.session_state.user_id).set(
-                {"cron_last_run": datetime.datetime.now(IST).isoformat()}, merge=True
-            )
-    except Exception as e:
-        print(f"Cron execution error: {e}")
-    st.stop()
+# The old Streamlit-based cron has been replaced with a true
+# Cloud Scheduler endpoint for genuine autonomous operation.
+#
+# See: cron_service.py
+# Deploy guide: CLOUD_SCHEDULER_DEPLOYMENT.md
+#
+# The new service runs independently of this Streamlit app,
+# executing check_proactive_interventions() for all users on a timer.
 
 # =========================================================
 # USER INTERFACE: APP SIDEBAR
@@ -1099,7 +1115,6 @@ with st.sidebar:
     # 🛡️ System Controls
     st.title("🛡️ System Control")
 
-    # FIX Bug #4: voice_panic_override is set via button, NOT auto-reset on every rerun
     audio_bytes = st.audio_input("🎙️ Emergency Voice Command")
 
     if audio_bytes is not None:
@@ -1112,15 +1127,12 @@ with st.sidebar:
             st.session_state.voice_panic_override = True
             st.rerun()
     else:
-        # Only clear the override when audio widget has no data at all
-        # (user has not uploaded audio this session)
         if not audio_bytes and st.session_state.voice_panic_override:
             st.session_state.voice_panic_override = False
         voice_panic = False
 
     manual_crisis = st.checkbox("💥 Force Crisis Mode (Under 6h)", value=False) or voice_panic
 
-    # FIX Bug #10: WhatsApp toggle with session flag to avoid spammy toasts
     whatsapp_sync = st.toggle(
         "📱 WhatsApp Ambient Sync",
         value=st.session_state.get("whatsapp_sync_enabled", True),
@@ -1265,7 +1277,7 @@ with st.sidebar:
                             deleted += 1
                     clear_cached_tasks()
                     st.session_state.morning_briefing_text = None
-                    st.session_state.whatsapp_toasted = False  # reset toast flag on wipe
+                    st.session_state.whatsapp_toasted = False
                     st.session_state.agent_log = [
                         {"agent": "System", "action": f"Demo reset — {deleted} task(s) wiped.", "time": datetime.datetime.now(IST).strftime("%I:%M %p")}
                     ]
@@ -1416,7 +1428,6 @@ else:
             st.rerun()
     with auto_col:
         if st.button("🤖 Run Autopilot Scan", type="primary", use_container_width=True):
-            # FIX Bug #10: reset toast flag at start of each autopilot run
             st.session_state.whatsapp_toasted = False
             with st.status("Aria Autopilot running...", expanded=True) as status:
                 status.write("1/4 — Running Horizon Agent")
@@ -1443,7 +1454,6 @@ else:
                 )
                 log_agent_action("Reflection Agent", "Autopilot refreshed briefing and reflection.")
 
-                # FIX Bug #10: show WhatsApp toast only once per autopilot run
                 if whatsapp_sync and not st.session_state.whatsapp_toasted:
                     st.toast("📱 WhatsApp Notification Sent: Aria updated your external matrix.", icon="💬")
                     st.session_state.whatsapp_toasted = True
@@ -1528,7 +1538,6 @@ else:
                     if t_lbl:
                         with st.spinner("Breakdown Agent deconstructing task..."):
                             add_task_to_matrix(t_lbl, t_desc, cat_val, days_val * 24, hrs_val, horizon_report)
-                        # FIX Bug #7: clear vision extraction state after form submit
                         st.session_state.pop("mock_lbl", None)
                         st.session_state.pop("mock_desc", None)
                         st.session_state.pop("mock_hrs", None)
@@ -1575,7 +1584,6 @@ else:
         active_tasks = [t for t in sorted_tasks if t.get("status") != "Completed"]
         completed_tasks = [t for t in sorted_tasks if t.get("status") == "Completed"]
 
-        # FIX Bug #5: Stack tab restored so Google Doc demo script at 2:45 works
         tab_active, tab_done, tab_trace, tab_dna, tab_chat = st.tabs([
             f"🔥 Active ({len(active_tasks)})",
             f"✅ Completed ({len(completed_tasks)})",
@@ -1763,11 +1771,9 @@ else:
             else:
                 st.info("No completed tasks yet. Finish something!")
 
-        # FIX Bug #5: Stack tab restored and merged with Agent Trace
         with tab_trace:
             st.subheader("🏗️ Architecture & Agent Trace")
 
-            # 9 Google Technologies table
             st.markdown("#### 🔗 Nine Google Technologies")
             products = [
                 ("Gemini 2.5 Flash", "Core Intelligence", "Powers all 8 agents — briefing, deconstruction, crisis plans, intervention letters, DNA analysis, planning docs"),
@@ -1794,7 +1800,6 @@ else:
                     )
 
             st.divider()
-            # Agent architecture table
             st.markdown("#### 🤖 Agent Network")
             st.markdown(
                 "| Agent | Trigger | Google Integration |\n"
@@ -1810,7 +1815,6 @@ else:
             )
 
             st.divider()
-            # Live agent trace
             st.markdown("#### 📋 Live Agent Trace")
             st.caption("Most recent autonomous decisions across all agents.")
             trace_entries = st.session_state.agent_log[:10]

@@ -4,3 +4,8 @@ __pycache__/
 .env
 .venv/
 venv/
+token.json
+service_account.json
+credentials.json
+client_secret.json
+envvars.txt
